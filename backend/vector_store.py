@@ -29,22 +29,27 @@ def _chunk_id(path: str, index: int) -> str:
     return hashlib.md5(f"{path}:{index}".encode()).hexdigest()
 
 
-async def index_chunks(chunks: list[dict]) -> int:
+async def index_chunks(chunks: list[dict], batch_size: int = 64) -> int:
     """Dodaje chunki do ChromaDB. Zwraca liczbę zaindeksowanych."""
     if not chunks:
         return 0
 
-    texts = [c["text"] for c in chunks]
-    embeddings = await embed(texts)
+    total = 0
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        texts = [c["text"] for c in batch]
+        embeddings = await embed(texts)
 
-    ids = [_chunk_id(c["path"], c["chunk_index"]) for c in chunks]
-    metadatas = [
-        {"path": c["path"], "chunk_index": c["chunk_index"], "heading": c.get("heading", "")}
-        for c in chunks
-    ]
+        ids = [_chunk_id(c["path"], c["chunk_index"]) for c in batch]
+        metadatas = [
+            {"path": c["path"], "chunk_index": c["chunk_index"], "heading": c.get("heading", "")}
+            for c in batch
+        ]
 
-    _collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
-    return len(chunks)
+        _collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+        total += len(batch)
+
+    return total
 
 
 async def search(query: str, top_k: int = 6, hybrid: bool = True) -> list[dict]:
