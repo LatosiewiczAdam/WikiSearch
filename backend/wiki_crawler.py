@@ -31,19 +31,17 @@ async def _get(client: httpx.AsyncClient, url: str) -> Any:
     return r.json()
 
 
-async def get_wikis() -> list[dict]:
-    async with httpx.AsyncClient() as client:
-        data = await _get(client, f"{_BASE}/wiki/wikis?{_API_VER}")
+async def get_wikis(client: httpx.AsyncClient) -> list[dict]:
+    data = await _get(client, f"{_BASE}/wiki/wikis?{_API_VER}")
     return data.get("value", [])
 
 
-async def get_all_pages(wiki_id: str) -> list[dict]:
+async def get_all_pages(wiki_id: str, client: httpx.AsyncClient) -> list[dict]:
     """Pobiera wszystkie strony wiki rekurencyjnie."""
-    async with httpx.AsyncClient() as client:
-        data = await _get(
-            client,
-            f"{_BASE}/wiki/wikis/{wiki_id}/pages?path=/&recursionLevel=full&includeContent=false&{_API_VER}",
-        )
+    data = await _get(
+        client,
+        f"{_BASE}/wiki/wikis/{wiki_id}/pages?path=/&recursionLevel=full&includeContent=false&{_API_VER}",
+    )
 
     pages = []
     _collect_pages(data, pages)
@@ -59,17 +57,16 @@ def _collect_pages(node: dict, result: list) -> None:
         _collect_pages(child, result)
 
 
-async def get_page_content(wiki_id: str, path: str) -> str:
+async def get_page_content(wiki_id: str, path: str, client: httpx.AsyncClient) -> str:
     """Pobiera treść strony jako Markdown."""
-    async with httpx.AsyncClient() as client:
-        encoded = path.replace(" ", "%20")
-        r = await client.get(
-            f"{_BASE}/wiki/wikis/{wiki_id}/pages?path={encoded}&includeContent=true&{_API_VER}",
-            headers=_HEADERS,
-            timeout=30,
-        )
-        r.raise_for_status()
-        data = r.json()
+    encoded = path.replace(" ", "%20")
+    r = await client.get(
+        f"{_BASE}/wiki/wikis/{wiki_id}/pages?path={encoded}&includeContent=true&{_API_VER}",
+        headers=_HEADERS,
+        timeout=30,
+    )
+    r.raise_for_status()
+    data = r.json()
     return data.get("content", "")
 
 

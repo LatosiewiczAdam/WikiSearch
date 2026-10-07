@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import httpx
 
 from wiki_crawler import get_wikis, get_all_pages, get_page_content, chunk_text
 from vector_store import index_chunks, search, get_stats, clear_index
@@ -59,26 +60,43 @@ async def _run_sync(wiki_id: str, clear: bool) -> None:
         if clear:
             clear_index()
 
-        pages = await get_all_pages(wiki_id)
-        _sync_state["total"] = len(pages)
-        _sync_state["message"] = f"Znaleziono {len(pages)} stron. Indeksowanie..."
+        async with httpx.AsyncClient() as client:
+            pages = await get_all_pages(wiki_id, client)
+            _sync_state["total"] = len(pages)
+            _sync_state["message"] = f"Znaleziono {len(pages)} stron. Pobieranie zawartości..."
 
-        total_chunks = 0
-        for i, page in enumerate(pages):
-            content = await get_page_content(wiki_id, page["path"])
-            chunks = chunk_text(content, page["path"])
-            if chunks:
-                await index_chunks(chunks)
-                total_chunks += len(chunks)
+            sem = asyncio.Semaphore(8)
+            completed = 0
 
-            _sync_state["progress"] = i + 1
-            _sync_state["message"] = f"Zaindeksowano {i + 1}/{len(pages)} stron ({total_chunks} chunków)"
+            async def fetch_and_chunk(page: dict) -> list[dict]:
+                nonlocal completed
+                async with sem:
+                    content = await get_page_content(wiki_id, page["path"], client)
+                    chunks = chunk_text(content, page["path"])
+                completed += 1
+                _sync_state["progress"] = completed
+                _sync_state["message"] = f"Pobrano {completed}/{len(pages)} stron..."
+                return chunks
+
+            results = await asyncio.gather(
+                *[fetch_and_chunk(p) for p in pages],
+                return_exceptions=True,
+            )
+            errors = [r for r in results if isinstance(r, BaseException)]
+            if errors:
+                raise errors[0]
+
+        all_chunks = [chunk for page_chunks in results for chunk in page_chunks]
+
+        _sync_state["message"] = f"Indeksowanie {len(all_chunks)} chunków..."
+        if all_chunks:
+            await index_chunks(all_chunks)
 
         _sync_state = {
             "status": "done",
             "progress": len(pages),
             "total": len(pages),
-            "message": f"Gotowe. Zaindeksowano {len(pages)} stron, {total_chunks} chunków.",
+            "message": f"Gotowe. Zaindeksowano {len(pages)} stron, {len(all_chunks)} chunków.",
         }
     except Exception as e:
         _sync_state = {"status": "error", "progress": 0, "total": 0, "message": str(e)}
@@ -91,7 +109,8 @@ async def _run_sync(wiki_id: str, clear: bool) -> None:
 @app.get("/api/wikis")
 async def list_wikis():
     try:
-        wikis = await get_wikis()
+        async with httpx.AsyncClient() as client:
+            wikis = await get_wikis(client)
         return {"wikis": wikis}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -102,7 +121,8 @@ async def sync_wiki(req: SyncRequest, background_tasks: BackgroundTasks):
     if _sync_state["status"] == "running":
         raise HTTPException(status_code=409, detail="Synchronizacja już trwa")
 
-    wikis = await get_wikis()
+    async with httpx.AsyncClient() as client:
+        wikis = await get_wikis(client)
     if not wikis:
         raise HTTPException(status_code=404, detail="Nie znaleziono żadnego wiki")
 
