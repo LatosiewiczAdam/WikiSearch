@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { chat } from "../api";
 import ModelSelector from "./ModelSelector";
@@ -16,6 +16,11 @@ export default function ChatPanel() {
   const [provider, setProvider] = useState("ollama");
   const [model, setModel] = useState("phi3.5");
   const [error, setError] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   const send = async () => {
     const q = input.trim();
@@ -73,6 +78,7 @@ export default function ChatPanel() {
           {loading && (
             <div style={{ color: "var(--text-muted)", fontSize: 13, fontStyle: "italic" }}>Generowanie odpowiedzi...</div>
           )}
+          <div ref={bottomRef} />
         </div>
       )}
 
