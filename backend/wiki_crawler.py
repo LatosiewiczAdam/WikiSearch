@@ -11,6 +11,19 @@ _HEADERS = {
 }
 _API_VER = "api-version=7.1"
 
+_PARA_SEP = "\n\n"
+
+_RE_CODE_FENCE = re.compile(r"^```[^\n]*", re.MULTILINE)
+_RE_TILDE_FENCE = re.compile(r"^~~~[^\n]*", re.MULTILINE)
+_RE_HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+_RE_SEPARATOR = re.compile(r"^[-=]{3,}\s*$", re.MULTILINE)
+_RE_BOLD_STAR = re.compile(r"\*\*(.+?)\*\*")
+_RE_BOLD_UNDER = re.compile(r"__(.+?)__")
+_RE_ITALIC_STAR = re.compile(r"\*(.+?)\*")
+_RE_ITALIC_UNDER = re.compile(r"_(.+?)_")
+_RE_CODE_INLINE = re.compile(r"`(.+?)`")
+_RE_LINK = re.compile(r"\[([^\]]+)\]\([^\)]+\)")
+
 
 async def _get(client: httpx.AsyncClient, url: str) -> Any:
     r = await client.get(url, headers=_HEADERS, timeout=30)
@@ -61,28 +74,28 @@ async def get_page_content(wiki_id: str, path: str) -> str:
 
 
 def strip_markdown(text: str) -> str:
-    text = re.sub(r"^```[^\n]*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"^~~~[^\n]*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"^#{1,6}\s+(.+)$", r"\1", text, flags=re.MULTILINE)
-    text = re.sub(r"^[-=]{3,}\s*$", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = re.sub(r"\*(.+?)\*", r"\1", text)
-    text = re.sub(r"`(.+?)`", r"\1", text)
-    text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+    text = _RE_CODE_FENCE.sub("", text)
+    text = _RE_TILDE_FENCE.sub("", text)
+    text = _RE_HEADING.sub(r"\1", text)
+    text = _RE_SEPARATOR.sub("", text)
+    text = _RE_BOLD_STAR.sub(r"\1", text)
+    text = _RE_BOLD_UNDER.sub(r"\1", text)
+    text = _RE_ITALIC_STAR.sub(r"\1", text)
+    text = _RE_ITALIC_UNDER.sub(r"\1", text)
+    text = _RE_CODE_INLINE.sub(r"\1", text)
+    text = _RE_LINK.sub(r"\1", text)
     return text
 
 
 def chunk_text(text: str, path: str, chunk_size: int = 1500, overlap: int = 1) -> list[dict]:
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = re.sub(r"\n{3,}", _PARA_SEP, text).strip()
     if not text:
         return []
 
-    heading_pattern = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
-
     current_heading = ""
     para_data = []
-    for para in text.split("\n\n"):
-        m = heading_pattern.search(para)
+    for para in text.split(_PARA_SEP):
+        m = _RE_HEADING.search(para)
         if m:
             current_heading = m.group(1).strip()
         cleaned = strip_markdown(para).strip()
@@ -103,7 +116,7 @@ def chunk_text(text: str, path: str, chunk_size: int = 1500, overlap: int = 1) -
 
         while i < len(para_data):
             para_text, _ = para_data[i]
-            extra = 2 if size > 0 else 0
+            extra = len(_PARA_SEP) if size > 0 else 0
             if size == 0 or size + extra + len(para_text) <= chunk_size:
                 chunk_paras.append(para_text)
                 size += extra + len(para_text)
@@ -128,7 +141,7 @@ def chunk_text(text: str, path: str, chunk_size: int = 1500, overlap: int = 1) -
             continue
 
         chunks.append({
-            "text": "\n\n".join(chunk_paras),
+            "text": _PARA_SEP.join(chunk_paras),
             "path": path,
             "chunk_index": len(chunks),
             "heading": chunk_heading,
