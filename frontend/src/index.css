@@ -1,0 +1,40 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2d3148;
+  --accent: #5b6af8;
+  --accent-hover: #4a58e8;
+  --text: #e2e4f0;
+  --text-muted: #7c82a8;
+  --success: #3ecf8e;
+  --error: #f56565;
+  --radius: 10px;
+  --font: 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  outline: none;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  outline: none;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
