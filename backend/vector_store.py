@@ -47,17 +47,38 @@ async def index_chunks(chunks: list[dict]) -> int:
     return len(chunks)
 
 
-async def search(query: str, top_k: int = 6) -> list[dict]:
-    """Szuka semantycznie w ChromaDB."""
+async def search(query: str, top_k: int = 6, hybrid: bool = True) -> list[dict]:
+    """Szuka w ChromaDB — semantycznie lub hybrydowo (BM25 + semantyczne)."""
     q_embed = await embed([query])
-    results = _collection.query(query_embeddings=q_embed, n_results=top_k, include=["documents", "metadatas", "distances"])
+    pool_size = min(top_k * 3, 50) if hybrid else top_k
+    results = _collection.query(query_embeddings=q_embed, n_results=pool_size, include=["documents", "metadatas", "distances"])
+
+    docs = results["documents"][0]
+    metas = results["metadatas"][0]
+    distances = results["distances"][0]
+
+    if not hybrid:
+        return [
+            {"text": doc, "path": meta["path"], "score": round(1 - dist, 3)}
+            for doc, meta, dist in zip(docs, metas, distances)
+        ]
+
+    from rank_bm25 import BM25Okapi
+
+    tokenized = [doc.lower().split() for doc in docs]
+    bm25 = BM25Okapi(tokenized)
+    bm25_scores = bm25.get_scores(query.lower().split())
+    max_bm25 = max(bm25_scores) if len(bm25_scores) > 0 else 0.0
 
     hits = []
-    for doc, meta, dist in zip(
-        results["documents"][0], results["metadatas"][0], results["distances"][0]
-    ):
-        hits.append({"text": doc, "path": meta["path"], "score": round(1 - dist, 3)})
-    return hits
+    for doc, meta, dist, bm25_score in zip(docs, metas, distances, bm25_scores):
+        semantic_score = 1 - dist
+        bm25_norm = bm25_score / (max_bm25 + 1e-9)
+        final_score = 0.6 * semantic_score + 0.4 * bm25_norm
+        hits.append({"text": doc, "path": meta["path"], "score": round(final_score, 3)})
+
+    hits.sort(key=lambda h: h["score"], reverse=True)
+    return hits[:top_k]
 
 
 def get_stats() -> dict:

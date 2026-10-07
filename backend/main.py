@@ -39,6 +39,7 @@ class ChatRequest(BaseModel):
     provider: str = "ollama"
     model: str = "llama3.2"
     top_k: int = 6
+    hybrid: bool = True
 
 
 class SyncRequest(BaseModel):
@@ -116,11 +117,11 @@ async def sync_status():
 
 
 @app.get("/api/search")
-async def semantic_search(q: str, top_k: int = 6):
+async def semantic_search(q: str, top_k: int = 6, hybrid: bool = True):
     if not q.strip():
         raise HTTPException(status_code=400, detail="Puste zapytanie")
     try:
-        hits = await search(q, top_k=top_k)
+        hits = await search(q, top_k=top_k, hybrid=hybrid)
         return {"results": hits, "query": q}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,7 +132,7 @@ async def chat(req: ChatRequest):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Puste pytanie")
     try:
-        hits = await search(req.question, top_k=req.top_k)
+        hits = await search(req.question, top_k=req.top_k, hybrid=req.hybrid)
         if not hits:
             return {"answer": "Nie znaleziono powiązanej dokumentacji.", "sources": []}
 
