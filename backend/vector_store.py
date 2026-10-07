@@ -38,7 +38,10 @@ async def index_chunks(chunks: list[dict]) -> int:
     embeddings = await embed(texts)
 
     ids = [_chunk_id(c["path"], c["chunk_index"]) for c in chunks]
-    metadatas = [{"path": c["path"], "chunk_index": c["chunk_index"]} for c in chunks]
+    metadatas = [
+        {"path": c["path"], "chunk_index": c["chunk_index"], "heading": c.get("heading", "")}
+        for c in chunks
+    ]
 
     _collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
     return len(chunks)
