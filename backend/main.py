@@ -78,7 +78,13 @@ async def _run_sync(wiki_id: str, clear: bool) -> None:
                 _sync_state["message"] = f"Pobrano {completed}/{len(pages)} stron..."
                 return chunks
 
-            results = await asyncio.gather(*[fetch_and_chunk(p) for p in pages])
+            results = await asyncio.gather(
+                *[fetch_and_chunk(p) for p in pages],
+                return_exceptions=True,
+            )
+            errors = [r for r in results if isinstance(r, BaseException)]
+            if errors:
+                raise errors[0]
 
         all_chunks = [chunk for page_chunks in results for chunk in page_chunks]
 
